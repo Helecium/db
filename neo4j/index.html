@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Агентство недвижимости CRUD</title>
+<style>
+body { font-family: Arial; background:#f4f6f8; padding:20px; }
+h1,h2 { text-align:center; }
+button { padding:8px 12px; margin:5px; border-radius:4px; border:none; background:#007bff; color:white; cursor:pointer;}
+button:hover { background:#0056b3; }
+fieldset { background:#fff; border:1px solid #ccc; border-radius:8px; padding:15px; margin-bottom:20px; display:none;}
+legend { font-weight:bold; }
+input, select, textarea { display:block; margin:6px 0; padding:8px; width:100%; border-radius:4px; border:1px solid #ccc;}
+textarea { resize: vertical; }
+.card { background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1); padding:15px; margin-bottom:15px;}
+.owner-row { display:flex; gap:10px; margin-bottom:5px; }
+.owner-row select { flex:1; }
+.owner-row button { background:#dc3545; }
+.owner-row button:hover { background:#a71d2a; }
+.controls { text-align:center; margin-bottom:20px; }
+</style>
+</head>
+<body>
+
+<h1>CRUD — Агентство недвижимости</h1>
+
+<div class="controls">
+    <button onclick="toggleForm('addressForm')">Добавить адрес</button>
+    <button onclick="toggleForm('ownerForm')">Добавить владельца</button>
+    <button onclick="toggleForm('propertyForm')">Создать объект</button>
+</div>
+
+<!-- --- Адрес --- -->
+<fieldset id="addressForm">
+<legend>Добавить адрес</legend>
+<input id="city" placeholder="Город">
+<input id="street" placeholder="Улица">
+<input id="house" placeholder="Дом">
+<button onclick="saveAddress()">Сохранить адрес</button>
+</fieldset>
+
+<!-- --- Владелец --- -->
+<fieldset id="ownerForm">
+<legend>Добавить владельца</legend>
+<input id="ownerName" placeholder="ФИО владельца">
+<button onclick="saveOwner()">Сохранить владельца</button>
+<ul id="ownersList"></ul>
+</fieldset>
+
+<!-- --- Объект недвижимости --- -->
+<fieldset id="propertyForm">
+<legend>Создать объект недвижимости</legend>
+<input id="title" placeholder="Название">
+<input id="type" placeholder="Тип (apartment, house)">
+<input id="price" type="number" placeholder="Цена">
+<input id="area" type="number" placeholder="Площадь">
+<input id="rooms" type="number" placeholder="Комнаты">
+
+<label>Выберите адрес:</label>
+<select id="addressSelect"></select>
+
+<label>Владельцы объекта:</label>
+<div id="propertyOwners"></div>
+<button type="button" onclick="addOwnerRow()">Добавить владельца</button>
+
+<br>
+<button onclick="saveProperty()">Сохранить объект</button>
+</fieldset>
+
+<hr>
+<h2>Список объектов</h2>
+<div id="list"></div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+
+function toggleForm(id){
+    ['addressForm','ownerForm','propertyForm'].forEach(f=>document.getElementById(f).style.display=f===id?'block':'none');
+}
+
+// --- Адреса ---
+function saveAddress(){
+    fetch(`${API}/addresses`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({city:city.value,street:street.value,house:house.value})
+    }).then(()=>{
+        city.value=""; street.value=""; house.value="";
+        loadAddresses();
+    });
+}
+
+function loadAddresses(){
+    fetch(`${API}/addresses`).then(res=>res.json()).then(data=>{
+        addressSelect.innerHTML="";
+        data.forEach(a=>{
+            let opt=document.createElement("option");
+            opt.value = JSON.stringify(a);
+            opt.textContent=`${a.city}, ${a.street}, ${a.house}`;
+            addressSelect.appendChild(opt);
+        });
+    });
+}
+
+// --- Владельцы ---
+let ownersListData=[];
+function saveOwner(){ 
+    let n=ownerName.value.trim(); 
+    if(!n){alert("Введите ФИО"); return;}
+    fetch(`${API}/owners`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name:n})
+    }).then(()=>{
+        ownerName.value="";
+        loadOwners();
+    });
+}
+
+function loadOwners(){ 
+    fetch(`${API}/owners`).then(res=>res.json()).then(data=>{
+        ownersListData=data; 
+        renderOwnersList(); 
+    }); 
+}
+
+function renderOwnersList(){ 
+    ownersList.innerHTML=""; 
+    ownersListData.forEach(o=>{
+        let li=document.createElement("li"); 
+        li.textContent=o.name; 
+        ownersList.appendChild(li); 
+    }); 
+}
+
+// --- Владельцы для объекта ---
+function addOwnerRow(){
+    if(ownersListData.length===0){ alert("Нет владельцев в базе"); return; }
+    let div=document.createElement("div");
+    div.className="owner-row";
+    div.innerHTML = `
+        <select>
+            <option value="">-- выберите владельца --</option>
+            ${ownersListData.map(o=>`<option value="${o.name}">${o.name}</option>`).join('')}
+        </select>
+        <button type="button" onclick="this.parentNode.remove()">Удалить</button>
+    `;
+    document.getElementById("propertyOwners").appendChild(div);
+}
+
+// --- Объект недвижимости ---
+function saveProperty(){
+    const address_obj = JSON.parse(addressSelect.value);
+    const ownersElems = document.querySelectorAll("#propertyOwners .owner-row select");
+    const ownersData = Array.from(ownersElems)
+        .map(sel=>sel.value)
+        .filter(name => name)
+        .map(name=>({name}));
+
+    if(!address_obj || ownersData.length===0){ alert("Выберите адрес и владельцев"); return; }
+
+    const payload = {
+        title: title.value,
+        type: type.value,
+        price: parseFloat(price.value),
+        area: parseFloat(area.value),
+        rooms: parseInt(rooms.value),
+        address: address_obj,
+        owners: ownersData
+    };
+
+    fetch(`${API}/properties`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+    }).then(()=>{
+        title.value=type.value=price.value=area.value=rooms.value="";
+        document.getElementById("propertyOwners").innerHTML="";
+        loadProperties();
+    });
+}
+
+// --- Список объектов ---
+function loadProperties(){
+    fetch(`${API}/properties`).then(res=>res.json()).then(data=>{
+        list.innerHTML="";
+        data.forEach(p=>{
+            const ownersStr=p.owners.map(o=>o.name).join(", ");
+            list.innerHTML+=`<div class="card">
+                <b>${p.title}</b><br>
+                Тип: ${p.type}<br>
+                Цена: ${p.price}<br>
+                Площадь: ${p.area} м²<br>
+                Комнаты: ${p.rooms}<br>
+                Адрес: ${p.address ? p.address.city+", "+p.address.street+", "+p.address.house : ""}<br>
+                Владельцы: ${ownersStr}<br>
+                <button onclick="deleteProperty('${p.title}')">Удалить</button>
+            </div>`;
+        });
+    });
+}
+
+// --- Удаление ---
+function deleteProperty(title){
+    fetch(`${API}/properties/${title}`,{method:"DELETE"}).then(()=>loadProperties());
+}
+
+// --- Инициализация ---
+loadAddresses(); 
+loadOwners(); 
+loadProperties();
+</script>
+</body>
+</html>
